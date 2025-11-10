@@ -21,35 +21,25 @@ vmap work work
 echo "+====================================="
 echo "| Complile RTL Code of soc            "
 echo "+====================================="
- #+define+ST_WIDTH_3\
      
-vlog     -f ../filelist/filelist_st3_dot.f  
-     #+define+ST16_RANDOM_TEST_16X8\
-     #+define+ST16_RANDOM_TEST_24X8\
-     #+define+ST16_RANDOM_TEST_32X8\
+vlog +define+SC_R3_K3_2D\
+     +define+COL=9\
+     +define+ROW=5\
+     -f ../filelist/filelist_sc_r3_k3_2d.f  
 
 echo "+====================================="
 echo "| Compiler Pass                       "
 echo "| Being to Run Simulation             "
 echo "+====================================="
-vsim -voptargs=+acc=npr work.dot_st3_tb -t 1ns
+vsim -voptargs=+acc=npr work.tb_sc -t 1ns
 
 ###################################### mus  ####################################
-add wave -noupdate -format logic -hexadecimal dot_st3_tb/clock  
-add wave -noupdate -format logic -hexadecimal dot_st3_tb/u_Dot_real/io_in_ready  
-add wave -noupdate -format logic -hexadecimal dot_st3_tb/u_Dot_real/io_in_weight
-add wave -noupdate -format logic -hexadecimal dot_st3_tb/u_Dot_real/io_in_data 
-add wave -noupdate -format logic -hexadecimal dot_st3_tb/u_Dot_real/io_out_data 
-add wave -noupdate -format logic -hexadecimal dot_st3_tb/u_Dot_real/FP_mult_32_10_v2/* 
-add wave -noupdate -format logic -hexadecimal dot_st3_tb/u_Dot_real/FP_mult_32_10_v2_1/* 
-add wave -noupdate -format logic -hexadecimal dot_st3_tb/u_Dot_real/FP_mult_32_10_v2_2/* 
-add wave -noupdate -format logic -hexadecimal dot_st3_tb/u_Dot_real/FP_add_32_13/* 
-add wave -noupdate -format logic -hexadecimal dot_st3_tb/u_Dot_real/FP_add_32_13_1/* 
-
-
-
-
-#add wave -noupdate -format logic -hexadecimal tsqr_mc_st4_tb/u_tsqr_mc/*
-
+add wave -noupdate -format logic -unsigned tb_sc/clock          
+add wave -noupdate -format logic -unsigned tb_sc/reset    
+add wave -noupdate -format logic -unsigned tb_sc/din_ready      
+add wave -noupdate -format logic -unsigned tb_sc/din            
+add wave -noupdate -format logic -unsigned tb_sc/dout_vld       
+add wave -noupdate -format logic -unsigned tb_sc/din_wt         
+add wave -noupdate -format logic -unsigned tb_sc/dout           
 run 10 us                                                                            
 

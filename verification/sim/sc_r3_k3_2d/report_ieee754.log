@@ -1,0 +1,12 @@
+Item0   error percent: 0.000000%, golden result: 00000000, dut result: 00000000
+Item1   error percent: 0.000000%, golden result: 00000000, dut result: 00000000
+Item2   error percent: 100.000000%, golden result: 426c0000, dut result: 0369d035
+Item0   error percent: 0.000000%, golden result: 00000000, dut result: 00000000
+Item1   error percent: 0.000000%, golden result: 00000000, dut result: 00000000
+Item2   error percent: 100.000000%, golden result: 42200000, dut result: 0369d035
+Item0   error percent: 0.000000%, golden result: 00000000, dut result: 00000000
+Item1   error percent: 0.000000%, golden result: 00000000, dut result: 00000000
+Item2   error percent: 100.000000%, golden result: 42180000, dut result: 0369d035
+Item0   error percent: 100.000000%, golden result: xxxxxxxx, dut result: 00000000
+Item1   error percent: 100.000000%, golden result: xxxxxxxx, dut result: 00000000
+Item2   error percent: 100.000000%, golden result: xxxxxxxx, dut result: 0369d035

@@ -1,0 +1,12 @@
+Item0   Comp Pass! error percent: 0.000000%, golden result: 0.000000, dut result: 0.000000
+Item1   Comp Pass! error percent: 0.000000%, golden result: 0.000000, dut result: 0.000000
+Item2   Comp FAIL! error percent: 100.000000%, golden result: 59.000000, dut result: 0.000000
+Item0   Comp Pass! error percent: 0.000000%, golden result: 0.000000, dut result: 0.000000
+Item1   Comp Pass! error percent: 0.000000%, golden result: 0.000000, dut result: 0.000000
+Item2   Comp FAIL! error percent: 100.000000%, golden result: 40.000000, dut result: 0.000000
+Item0   Comp Pass! error percent: 0.000000%, golden result: 0.000000, dut result: 0.000000
+Item1   Comp Pass! error percent: 0.000000%, golden result: 0.000000, dut result: 0.000000
+Item2   Comp FAIL! error percent: 100.000000%, golden result: 38.000000, dut result: 0.000000
+Item0   Comp FAIL! error percent: 100.000000%, golden result: 1.000000, dut result: 0.000000
+Item1   Comp FAIL! error percent: 100.000000%, golden result: 1.000000, dut result: 0.000000
+Item2   Comp FAIL! error percent: 100.000000%, golden result: 1.000000, dut result: 0.000000
