@@ -1,0 +1,81 @@
+function C = random_real_matrix(n,m) % x is rows, y is cols 
+    C = randn(n,m); 
+end
+
+
+function out = SODA_2d(bw,k,m,n,r,shape)
+
+%A = random_real_matrix(n,m);
+%W = random_real_matrix(r,r);
+A = [0 1 2 3 4 5 6 7 8 ;9 10 11 12 13 14 15 16 17 ;18 19 20 21 22 23 24 25 26 ;];
+A_dut_input = [ 1 2 3 4 5 6 7 8 9; 10 11 12 13 14 15 16 17 18; 19 20 21 22 23 24 25 26 27;];
+W = [1 1 1;1 1 1;1 1 1];
+out = zeros(n-2, m-2);
+p = 2; 
+
+for i = 2:n-1
+    for j = 2:m-1
+        if strcmp(shape, "cross")
+            out(i-1,j-1) = ...
+                W(p,p)   * A(i,  j) + ... % center
+                W(p-1,p) * A(i-1,j) + ... % up
+                W(p+1,p) * A(i+1,j) + ... % down
+                W(p,p-1) * A(i,  j-1) + ... % left
+                W(p,p+1) * A(i,  j+1);    % right
+        end
+    end
+end
+
+disp(out);
+
+
+input_f           = fopen('C:\Stencil_accelerator\verification\golden\input.txt', 'w');
+weights_f         = fopen('C:\Stencil_accelerator\verification\golden\weights.txt', 'w');
+output_f          = fopen('C:\Stencil_accelerator\verification\golden\output.txt', 'w');
+input_ieee754_f   = fopen('C:\Stencil_accelerator\verification\golden\input_ieee754.txt', 'w');
+weights_ieee754_f = fopen('C:\Stencil_accelerator\verification\golden\weights_ieee754.txt', 'w');
+output_ieee754_f  = fopen('C:\Stencil_accelerator\verification\golden\output_ieee754.txt', 'w');
+
+% ---- Write A ----
+for i = 1:size(A_dut_input,1)
+    for j = 1:size(A_dut_input,2)
+        fprintf(input_f, '%f  ', A_dut_input(i,j));
+        fprintf(input_ieee754_f, '%08X', typecast(single(A_dut_input(i,j)), 'uint32'));
+    end
+    fprintf(input_f, '\n');
+    fprintf(input_ieee754_f, '\n');
+end
+
+
+%for i = 1:size(W,1)
+ %   for j = 1:size(W,2)
+%        fprintf(weights_f, '%f  ', W(i,j));
+    %    fprintf(weights_ieee754_f, '%08X', typecast(single(W(i,j)), 'uint32'));
+   % end
+  %  fprintf(weights_f, '\n');
+ %   fprintf(weights_ieee754_f, '\n');
+%end
+
+
+for i = 1:size(out,1)
+    for j = 1:size(out,2)
+        fprintf(output_f, '%f ', out(i,j));
+        fprintf(output_ieee754_f, '%08X', typecast(single(out(i,j)), 'uint32'));
+    end
+    fprintf(output_f, '\n');
+    fprintf(output_ieee754_f, '\n');
+end
+
+% Close files
+fclose(input_f);
+fclose(weights_f);
+fclose(output_f);
+fclose(input_ieee754_f);
+fclose(weights_ieee754_f);
+fclose(output_ieee754_f);
+
+end
+
+
+% ---- RUN ----
+SODA_2d(32,3,9,3,3,"cross");

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ScalaCompilerConfiguration">
+    <profile name="sbt 1" modules="Stencil_accelerator">
+      <plugins>
+        <plugin path="C:\Users\Desert Fox\AppData\Local\Coursier\Cache\v1\https\repo1.maven.org\maven2\org\chipsalliance\chisel-plugin_2.13.12\6.0.0\chisel-plugin_2.13.12-6.0.0.jar" />
+      </plugins>
+    </profile>
+  </component>
+</project>

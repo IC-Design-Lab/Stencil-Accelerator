@@ -24,7 +24,7 @@ echo "+====================================="
      
 vlog +define+SC_R3_K3_2D\
      +define+COL=9\
-     +define+ROW=5\
+     +define+ROW=3\
      -f ../filelist/filelist_sc_r3_k3_2d.f  
 
 echo "+====================================="
@@ -34,12 +34,37 @@ echo "+====================================="
 vsim -voptargs=+acc=npr work.tb_sc -t 1ns
 
 ###################################### mus  ####################################
-add wave -noupdate -format logic -unsigned tb_sc/clock          
-add wave -noupdate -format logic -unsigned tb_sc/reset    
-add wave -noupdate -format logic -unsigned tb_sc/din_ready      
-add wave -noupdate -format logic -unsigned tb_sc/din            
-add wave -noupdate -format logic -unsigned tb_sc/dout_vld       
-add wave -noupdate -format logic -unsigned tb_sc/din_wt         
-add wave -noupdate -format logic -unsigned tb_sc/dout           
+add wave -noupdate -format logic -hexadecimal tb_sc/clock          
+add wave -noupdate -format logic -hexadecimal tb_sc/reset    
+add wave -noupdate -format logic -hexadecimal tb_sc/in_ready      
+add wave -noupdate -format logic -hexadecimal tb_sc/in_matrix         
+add wave -noupdate -format logic -hexadecimal tb_sc/in_weight      
+add wave -noupdate -format logic -hexadecimal tb_sc/out_data        
+add wave -noupdate -format logic -hexadecimal tb_sc/out_valid    
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/scs_0/*
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/scs_1/*
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/scs_2/*
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain0_fifo3/io_in
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain0_fifo0/io_in
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain0_fifo9/io_in
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain1_fifo1/io_in
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain1_fifo8/io_in
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain2_fifo2/io_in
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain2_fifo1/io_in
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain2_fifo7/io_in
+
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain0_fifo3/io_out
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain0_fifo0/io_out
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain0_fifo9/io_out
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain1_fifo1/io_out
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain1_fifo8/io_out
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain2_fifo2/io_out
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain2_fifo1/io_out
+add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r3_k3_2d/chain2_fifo7/io_out
+
+
+
+
+     
 run 10 us                                                                            
 

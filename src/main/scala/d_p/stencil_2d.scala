@@ -1,0 +1,987 @@
+package stencil_2d
+
+
+import chisel3._
+import chisel3.util.{Queue,Decoupled}
+import chisel3.stage.ChiselGeneratorAnnotation
+import chisel3.util.{Cat, MuxCase, ShiftRegister, is, log2Ceil, switch}
+import circt.stage.ChiselStage
+import firrtl.options.TargetDirAnnotation
+
+import java.io._
+import FPPackageMario.FP_Modules.FPUnits._
+import stencil.datapath_2d
+
+
+object dp {
+  def main(args: Array[String]): Unit = {
+    // make sure directory exists
+    val dir = new File("verification/dut")
+    dir.mkdirs()
+
+    val sw2 = new PrintWriter(new File(dir, "sc_r3_k3_2d.sv"))
+    sw2.println(circt.stage.ChiselStage.emitSystemVerilog(new SODA_2d(32, 3 ,9, 3,10,13)))
+    sw2.close()
+  }
+}
+
+object dp3 {
+  def main(args: Array[String]): Unit = {
+    // make sure directory exists
+    val dir = new File("verification/dut")
+    dir.mkdirs()
+
+    val sw2 = new PrintWriter(new File(dir, "datapath_3d.sv"))
+    sw2.println(circt.stage.ChiselStage.emitSystemVerilog(new SODA_3d(32, 3 ,9, 9,3,10,13)))
+    sw2.close()
+  }
+}
+
+
+
+object dp3d {
+  def main(args: Array[String]): Unit = {
+    // make sure directory exists
+    val dir = new File("verification/dut")
+    dir.mkdirs()
+
+    val sw2 = new PrintWriter(new File(dir, "datapath_3d.sv"))
+    sw2.println(circt.stage.ChiselStage.emitSystemVerilog(new laplace_3d(32, 3 ,6, 6,10,13)))
+    sw2.close()
+  }
+}
+
+class FIFO_r(val bw: Int, val depth: Int) extends Module {
+  val io = IO(new Bundle {
+    val in  = Input(UInt(bw.W))
+    val out = Output(UInt(bw.W))
+  })
+
+  val regs = RegInit(VecInit(Seq.fill(depth)(0.U(bw.W))))
+
+  // shift each cycle
+  regs(0) := io.in
+  for(i <- 1 until depth){
+    regs(i) := regs(i-1)
+  }
+
+  io.out := regs.last
+}
+
+class SODA_3d(bw: Int, k: Int, x:Int, y:Int, r: Int, mult_pd: Int, add_pd: Int) extends Module {
+  val io = IO(new Bundle() {
+
+
+    val datapath_data_in = Input(UInt((bw * r* k).W))
+    val datapath_ready_in = Input(Bool())
+    val datapath_data_out = Output(UInt((bw * r *k).W))
+
+
+
+  })
+
+
+  val scs = Seq.fill(k) {
+    Module(new dot(bw, 7, mult_pd, add_pd))
+  }
+  // gen starting sequence
+  val a: Seq[Int] = Seq(-x*y, -x,-1, 0, 1,x,x*y)
+  // expand set based on k
+  val a_k = (for {shift <- 0 until k
+                  point <- a} yield point + shift).distinct.sorted
+
+  println(a_k)
+  // gen the chains
+  val chains = for (i <- 0 until k)
+    yield a_k.iterator.filter(point => ((point % k + k) % k) == i).toSeq
+
+println(chains)
+
+  val fifo_depths_reversed: Seq[Seq[Int]] = chains.map(_.sliding(2).map { case Seq(a, b) => (b - a) / k }.toSeq.reverse)
+  println(fifo_depths_reversed)
+
+
+  val a_k_trimmed = a_k.dropRight(k)
+
+  // map fifos to offsets
+  val offset_map: Seq[Seq[Int]] = chains.map { chain => chain.reverse.filter(a_k_trimmed.contains) }
+  println(offset_map)
+  val fifo_offset_map = scala.collection.mutable.Map[Int, FIFO_r]()
+
+  val fifos: Seq[Seq[FIFO_r]] =
+    fifo_depths_reversed.zipWithIndex.map { case (depths, chainid) =>
+      depths.zipWithIndex.map { case (depth, i) =>
+        val offsetForName = offset_map(chainid)(i)
+        val fifo = Module(new FIFO_r(bw, depth))
+
+        fifo.suggestName(s"chain${chainid}_fifo${offsetForName}")
+        println(s"chain $chainid fifo offset=$offsetForName depth=$depth")
+        fifo_offset_map(offsetForName) = fifo
+
+        fifo
+      }
+    }
+//
+  println(fifo_offset_map)
+  val fifo_map: Map[Int, FIFO_r] = fifo_offset_map.toMap
+  //val base_offsets = a.dropRight(1) // execulde the element because this is grabbed directyl from the input
+  // consider chaning the 1 in base_offset for 3d and other 2d shapes
+
+  scs.zipWithIndex.foreach { case (sc, sc_id) =>
+
+    // shifted offsets for each sc
+    val sc_offsets = a.map(_ + sc_id)
+    println(sc_offsets)
+    val fifo_offsets = sc_offsets.dropRight(1) //
+    val chain_offset = sc_offsets.last // last
+
+//
+    fifo_offsets.zipWithIndex.foreach { case (offset, in) =>
+
+      sc.io.in_matrix(in) := fifo_map(offset).io.out
+      sc.io.in_weight(in) := "h3f800000".U(32.W) //
+      dontTouch(sc.io.out_data)
+    }
+
+    val last_input = fifo_offsets.length
+
+
+    sc.io.in_matrix(last_input) := io.datapath_data_in(k * bw - (sc_id * bw) - 1, (k * bw - (bw * (sc_id + 1))))
+
+    sc.io.in_weight(last_input) := "h3f800000".U(32.W) //
+  }
+
+
+
+  val fifo_outputs = Wire(Vec(k, UInt(bw.W)))
+
+  for (i <- fifos.indices) { // i index of chain
+    for (j <- fifos(i).indices) { // j index of fifo inside chain
+      if (j == 0) {
+        fifos(i)(j).io.in := io.datapath_data_in(k*bw-(i*bw) - 1, (k*bw - (bw*(i+1))))
+      }
+      else {
+        fifos(i)(j).io.in := fifos(i)(j - 1).io.out
+      }
+    }
+
+
+
+
+  }
+
+  for (i <- fifos.indices) {
+    fifo_outputs(i) := fifos(i).last.io.out
+  }
+
+  io.datapath_data_out := fifo_outputs.asUInt
+
+}
+
+class SODA_2d(bw: Int, k: Int, m:Int, r: Int, mult_pd: Int, add_pd: Int) extends Module {
+  val io = IO(new Bundle() {
+
+
+    val in_matrix = Input(UInt((bw * k).W))
+    val in_weight = Input(UInt((bw * r * r).W))
+    val in_ready = Input(Bool())
+    val out_data = Output(UInt((bw * k).W))
+    val out_valid = Output(Bool())
+
+
+  })
+
+
+  val ADD_CC = 13
+  val MULT_CC = 10
+  val ADD_TREE_CC = log2Ceil(5 - 1) * ADD_CC // latency of the cascading adders except for the last one
+  val DOT_CC = MULT_CC + ADD_TREE_CC + ADD_CC // latency of the full dot product
+  val LATENCY = ((r-1)*(m/k))+DOT_CC
+  val W_SIZE = r*r
+
+  val weights = Reg(Vec(W_SIZE, UInt(bw.W)))
+
+  for(i <- 0 until (W_SIZE)){
+    weights(i) := io.in_weight(W_SIZE * bw - (i * bw) - 1, (W_SIZE * bw - (bw * (i+1))))
+  }
+
+  io.out_valid := ShiftRegister(io.in_ready, LATENCY)
+
+
+
+  val scs = Seq.fill(k) {
+    Module(new dot(bw, 5, mult_pd, add_pd))
+  }
+  // gen starting sequence
+  val a: Seq[Int] = Seq(-m, -1, 0, 1, m)
+  // expand set based on k
+  val a_k = (for {shift <- 0 until k
+                  point <- a} yield point + shift).distinct.sorted
+  // gen the chains
+  val chains = for (i <- 0 until k)
+    yield a_k.iterator.filter(point => ((point % k + k) % k) == i).toSeq
+
+
+  // FIFO depths calc
+  var fifo_index = 0
+  val fifo_depths_reversed: Seq[Seq[Int]] = chains.map(_.sliding(2).map { case Seq(a, b) => (b - a) / k }.toSeq.reverse)
+
+
+
+  val a_k_trimmed = a_k.dropRight(k)
+
+  // map fifos to offsets
+  val offset_map: Seq[Seq[Int]] = chains.map { chain => chain.reverse.filter(a_k_trimmed.contains) }
+  println(offset_map)
+  val fifo_offset_map = scala.collection.mutable.Map[Int, FIFO_r]()
+
+  val fifos: Seq[Seq[FIFO_r]] =
+    fifo_depths_reversed.zipWithIndex.map { case (depths, chainid) =>
+      depths.zipWithIndex.map { case (depth, i) =>
+        val offsetForName = offset_map(chainid)(i)
+        val fifo = Module(new FIFO_r(bw, depth))
+
+        fifo.suggestName(s"chain${chainid}_fifo${offsetForName}")
+        println(s"chain $chainid fifo offset=$offsetForName depth=$depth")
+        fifo_offset_map(offsetForName) = fifo
+
+        fifo
+      }
+    }
+
+  println(fifo_offset_map)
+  val fifo_map: Map[Int, FIFO_r] = fifo_offset_map.toMap
+  //val base_offsets = a.dropRight(1) // execulde the element because this is grabbed directyl from the input
+  // consider chaning the 1 in base_offset for 3d and other 2d shapes
+
+  scs.zipWithIndex.foreach { case (sc, sc_id) =>
+
+    // shifted offsets for each sc
+    val sc_offsets = a.map(_ + sc_id)
+    println(sc_offsets)
+    val fifo_offsets = sc_offsets.dropRight(1) // first 4
+    val chain_offset = sc_offsets.last // last one
+
+
+    fifo_offsets.zipWithIndex.foreach { case (offset, in) =>
+
+      sc.io.in_matrix(in) := fifo_map(offset).io.out
+      sc.io.in_weight(in) := weights(in)
+
+      dontTouch(sc.io.out_data)
+    }
+
+    val last_input = fifo_offsets.length
+
+
+    sc.io.in_matrix(last_input) := io.in_matrix(k * bw - (sc_id * bw) - 1, (k * bw - (bw * (sc_id + 1))))
+    sc.io.in_weight(last_input) := weights(last_input)
+    //sc.io.in_weight(last_input) := "h3f800000".U(32.W)
+  }
+
+
+
+  val sc_outputs = Wire(Vec(k, UInt(bw.W)))
+
+  for (i <- fifos.indices) { // i index of chain
+    for (j <- fifos(i).indices) { // j index of fifo inside chain
+      if (j == 0) {
+        fifos(i)(j).io.in := io.in_matrix(k*bw-(i*bw) - 1, (k*bw - (bw*(i+1))))
+      }
+      else {
+        fifos(i)(j).io.in := fifos(i)(j - 1).io.out
+      }
+    }
+  }
+
+//  for (i <- fifos.indices) {
+//    fifo_outputs(i) := fifos(i).last.io.out
+//  }
+//
+//   io.out_data := fifo_outputs.asUInt
+
+    for (i <- scs.indices) {
+      sc_outputs(math.abs(i-(k-1))) := scs(i).io.out_data
+    }
+
+     io.out_data := sc_outputs.asUInt
+
+}
+
+
+//this stencil core is for partial stencils, meaning if it were
+class stencil_core( bw: Int, sw:Int, mult_pd: Int, add_pd: Int) extends Module {
+
+  val io = IO(new Bundle() {
+
+    //  val clk = Input(Clock())
+    //  val rst = Input(Bool())
+
+    val in_matrix = Input(Vec(sw, UInt(bw.W)))
+    val in_weight = Input(Vec(sw, UInt(bw.W)))
+    val in_ready = Input(Bool())
+    val out_data = Output(UInt(bw.W))
+    val out_valid = Output(Bool())
+  })
+
+
+  val ADD_CC = 13
+  val MULT_CC = 10
+  val ADD_TREE_CC = log2Ceil(sw - 1) * ADD_CC // latency of the cascading adders except for the last one
+  val DOT_CC = MULT_CC + ADD_TREE_CC + ADD_CC // latency of the full dot product
+  val ACC_CC = ADD_CC * (sw - 1)
+  val DATAPATH_CC = DOT_CC + ADD_CC * (sw - 1) // latency of a full stencil computation
+  val OUT_VAL_CC = DOT_CC + ADD_CC * (sw - 1) + (sw)
+  ////
+  // the latency of the sc is as follows:
+  // DOT latency + adder(0) latency + adder index+1 + adder(1) latency +adder index +1 + .... etc
+  ////////////////////////////////////////////////////
+
+
+  val data_reg = RegInit(0.U((sw * bw).W))
+
+  val dot = Module(new Dot_real(bw, sw, mult_pd, add_pd)).io
+  //add a mux before in_matrix, selector is shape parameter & column_cnt
+
+  when(io.in_ready){
+    data_reg := Cat(io.in_matrix).asUInt
+  }
+
+
+
+  dot.in_data := data_reg
+  dot.in_weight := Cat(io.in_weight).asUInt
+  dot.in_ready := io.in_ready
+
+
+  //shift reg that spans the sc
+  val acc_reg = RegInit(VecInit(Seq.fill(ACC_CC)(0.U(bw.W)))) // shift reg that goes between dot and external adder for acc operation
+  acc_reg(0) := dot.out_data
+  for (z <- 1 until ACC_CC) {
+    acc_reg(z) := acc_reg(z - 1)
+  }
+
+  val sc_count = RegInit(0.U(bw.W)) // counter for full stencil - consider increasing size of reg
+  dontTouch(sc_count)
+  sc_count := sc_count + 1.U
+  when(sc_count === ((OUT_VAL_CC).U)) {
+    sc_count := 0.U
+  }
+
+  // signal to indicate when output is valid
+  val output_valid = ShiftRegister(io.in_ready, OUT_VAL_CC)
+  io.out_valid := output_valid
+
+  //shift regs for systolic adders
+  val shift_regs: Seq[UInt] = (0 until sw).map { i =>
+
+    if (i == 0) RegNext(dot.out_data) // first adder, 1 cycle delay
+    else ShiftRegister(dot.out_data, (ADD_CC * i) - i)
+  }
+  //external adders instantitation
+  val systolic_adders = for (i <- 0 until sw - 1) yield {
+    val adder = Module(new FP_add(bw, add_pd)).io
+    adder.in_en := true.B
+    adder.in_valid := true.B
+    adder
+  }
+
+  //external adders connections
+  for (i <- 0 until sw - 1) {
+    if (i == 0) { // first adder connects to dot with 1 shift reg
+      systolic_adders(i).in_a := shift_regs(i)
+      systolic_adders(i).in_b := dot.out_data
+    }
+    else { // remaining adders connect in series with a shift reg of 13 ccs inbetween
+      systolic_adders(i).in_a := shift_regs(i)
+      systolic_adders(i).in_b := systolic_adders(i - 1).out_s
+    }
+
+    io.out_data := systolic_adders(sw - 2).out_s
+  }
+  // }
+}
+
+class laplace_3d(bw: Int, k: Int, sp:Int, z: Int, mult_pd: Int, add_pd: Int) extends Module {
+  val io = IO(new Bundle() {
+
+
+    val datapath_data_in = Input(UInt((bw * (k*k)).W))
+    val datapath_ready_in = Input(Bool())
+    val datapath_data_out1 = Output(UInt(bw.W))
+    val datapath_data_out2 = Output(UInt(bw.W))
+    val datapath_data_out3 = Output(UInt(bw.W))
+    val datapath_data_out4 = Output(UInt(bw.W))
+    val datapath_data_out5 = Output(UInt(bw.W))
+    val datapath_data_out6 = Output(UInt(bw.W))
+
+
+  })
+
+
+
+  val z_cnt = RegInit(0.U(bw.W))
+  dontTouch(z_cnt)
+  val cnt = RegInit(0.U(bw.W))
+  dontTouch(cnt)
+  cnt:= cnt+ 1.U
+
+  when (z_cnt === z.U){
+    z_cnt := 0.U
+  }.otherwise{
+    z_cnt := z_cnt + 1.U
+  }
+
+  val f1 = Module(new Filter_3d(bw, k,sp, 6, 4)).io
+  val f2 = Module(new Filter_3d(bw, k,sp, 6,1)).io
+  val f3 = Module(new Filter_3d(bw, k,sp, 6,3)).io
+  val f4 = Module(new Filter_3d(bw, k,sp, 6,5)).io
+  val f5 = Module(new Filter_3d(bw, k,sp,6, 7)).io
+  val f6 = Module(new Filter_3d(bw, k,sp,6, 22)).io
+
+
+
+//
+//  val rb1 = Module(new Reuse_buffer(bw,k,sp)).io
+//  val rb2 = Module(new Reuse_buffer(bw,k,sp)).io
+//  val rb3 = Module(new Reuse_buffer(bw,k,sp)).io
+//  val rb4 = Module(new Reuse_buffer(bw,k,sp)).io
+//  val rb5 = Module(new Reuse_buffer(bw,k,sp)).io
+
+
+
+
+  for (i <- 0 until k*k) {
+    f1.data_in(i) := io.datapath_data_in(((k*k - i) * bw - 1), ((k*k - 1 - i) * bw))
+  }
+
+
+  f2.data_in:=f1.data_to_rebuffer
+
+  f3.data_in:=f2.data_to_rebuffer
+
+  f4.data_in:=f3.data_to_rebuffer
+
+  f5.data_in:=f4.data_to_rebuffer
+
+  f6.data_in:=f5.data_to_rebuffer
+
+
+
+
+  val fifo1 = (Module(new FIFO(bw, 26)))
+  val fifo2 = (Module(new FIFO(bw, 20)))
+  val fifo3 = (Module(new FIFO(bw, 15)))
+  val fifo4 = (Module(new FIFO(bw, 11)))
+  val fifo5 = (Module(new FIFO(bw, 7)))
+  val fifo6 = (Module(new FIFO(bw, 5)))
+
+
+
+  fifo1.io.enq.bits:=f1.data_to_Fifo
+  fifo2.io.enq.bits:=f2.data_to_Fifo
+  fifo3.io.enq.bits:=f3.data_to_Fifo
+  fifo4.io.enq.bits:=f4.data_to_Fifo
+  fifo5.io.enq.bits:=f5.data_to_Fifo
+  fifo6.io.enq.bits:=f6.data_to_Fifo
+
+  fifo1.io.enq.valid:=f1.valid_out
+  fifo2.io.enq.valid:=f2.valid_out
+  fifo3.io.enq.valid:=f3.valid_out
+  fifo4.io.enq.valid:=f4.valid_out
+  fifo5.io.enq.valid:=f5.valid_out
+  fifo6.io.enq.valid:=f6.valid_out
+
+
+  io.datapath_data_out1 := fifo1.io.deq.bits
+  io.datapath_data_out2 := fifo2.io.deq.bits
+  io.datapath_data_out3 := fifo3.io.deq.bits
+  io.datapath_data_out4 := fifo4.io.deq.bits
+  io.datapath_data_out5 := fifo5.io.deq.bits
+  io.datapath_data_out6 := fifo6.io.deq.bits
+
+
+  // to calculate when data is ready to be dequeued
+  val f1_deq = RegInit((false.B))
+  val f2_deq = RegInit((false.B))
+  val f3_deq = RegInit((false.B))
+  val f4_deq = RegInit((false.B))
+  val f5_deq = RegInit((false.B))
+  val f6_deq = RegInit((false.B))
+
+  when(cnt === 21.U){
+    f1_deq := true.B
+
+    f2_deq := true.B
+
+    f3_deq := true.B
+
+    f4_deq := true.B
+
+    f5_deq := true.B
+
+    f6_deq := true.B
+
+
+  }
+
+  fifo1.io.deq.ready := f1_deq
+  fifo2.io.deq.ready :=f2_deq
+  fifo3.io.deq.ready := f3_deq
+  fifo4.io.deq.ready := f4_deq
+  fifo5.io.deq.ready := f5_deq
+  fifo6.io.deq.ready := f6_deq
+
+
+}
+
+class Reuse_buffer_3d(bw: Int, k:Int, sp:Int) extends Module {
+  val io = IO(new Bundle() {
+    val data_in = Input(Vec(k*k, UInt(bw.W)))
+    val data_out = Output(Vec(k*k, UInt(bw.W)))
+  })
+
+
+  // 3D buffer: sp planes, each k×k
+  val buffer = Reg(Vec(sp, Vec(k * k, UInt(bw.W))))
+
+  // Shift planes: move older planes back
+  for (z <- sp - 1 to 1 by -1) {
+    buffer(z) := buffer(z - 1)
+  }
+
+  // Load new plane at z=0
+  buffer(0) := io.data_in
+
+  // Output the oldest plane (z = sp - 1)
+  io.data_out := buffer(sp - 1)
+
+}
+
+
+class Filter_3d(bw: Int, k:Int, sp: Int, z: Int, position: Int) extends Module {
+
+
+  // x x x     x 10 x      x x x
+  // x 4 x     12 x 14     x 22 x
+  // x x x     x 16 x      x x x
+
+
+
+
+  // cols of tile mod k = 0
+  val io = IO(new Bundle() {
+
+
+    val data_in = Input(Vec(k*k, UInt(bw.W)))
+    val valid_out = Output(Bool())
+    val data_to_Fifo = Output(UInt(bw.W))
+    val data_to_rebuffer = Output(Vec(k*k, UInt(bw.W)))
+    // val in_cnt = Input(UInt(bw.W))
+  })
+
+
+  val cnt = RegInit(0.U(bw.W))
+  dontTouch(cnt)
+  io.valid_out:=false.B
+
+  val offset = Reg(UInt(bw.W))
+  dontTouch(offset)
+  when (cnt === z.U+ offset){
+    cnt := 0.U
+  }.otherwise{
+    cnt := cnt + 1.U
+  }
+
+  //val cnt = Wire(UInt(bw.W))
+  //cnt := io.in_cnt
+
+  //  0 1 2
+  //   3 4 5
+  //  6 7 8
+
+  io.data_to_Fifo := 0.U
+
+  if (position == 4) { // back plane, central point
+    offset := 0.U
+    when(cnt < z.U-1.U+offset){
+
+      io.data_to_Fifo := io.data_in(4)
+      io.valid_out := true.B
+    }
+  } else if (position == 1) { // north central plane
+    offset := 3.U
+    when(cnt > 0.U+offset && cnt < z.U+offset){
+      io.data_to_Fifo := io.data_in(1)
+      io.valid_out := true.B
+    }
+  } else if (position == 3) {
+    offset := 6.U
+    when(cnt > 0.U+offset && cnt < z.U+offset){
+      io.data_to_Fifo := io.data_in(3)
+      io.valid_out := true.B
+    }
+  }
+  else if (position == 5) {
+    offset := 9.U
+    when(cnt > 0.U+offset && cnt < z.U+offset){
+      io.data_to_Fifo := io.data_in(5)
+      io.valid_out := true.B
+    }
+  } else if (position == 7) {
+    offset := 12.U
+    when(cnt > 1.U+offset){
+      io.data_to_Fifo := io.data_in(7)
+      io.valid_out := true.B
+    }
+  }
+  else if (position == 22) {
+    offset := 15.U
+    when(cnt > 1.U+offset){
+      io.data_to_Fifo := io.data_in(4)
+      io.valid_out := true.B
+    }
+  }
+
+
+
+  io.data_to_rebuffer := io.data_in
+
+}
+
+// sp is stencil point = 5
+// k is unroll factor = 3
+class datapath_2d(bw: Int, k: Int, sp:Int, rows: Int, mult_pd: Int, add_pd: Int,shape:Int) extends Module {
+  val io = IO(new Bundle() {
+
+
+    val datapath_data_in = Input(UInt((bw * (k)).W))
+    val datapath_ready_in = Input(Bool())
+    val datapath_data_out1 = Output(UInt(bw.W))
+    val datapath_data_out2 = Output(UInt(bw.W))
+    val datapath_data_out3 = Output(UInt(bw.W))
+    val datapath_data_out4 = Output(UInt(bw.W))
+    val datapath_data_out5 = Output(UInt(bw.W))
+
+
+  })
+
+
+  val row_cnt = RegInit(0.U(bw.W))
+  val cnt = RegInit(0.U(bw.W))
+  cnt:= cnt+ 1.U
+
+  when (row_cnt === rows.U){
+    row_cnt := 0.U
+  }.otherwise{
+    row_cnt := row_cnt + 1.U
+  }
+
+  val f1 = Module(new Filter(bw, k,sp, 6, 1)).io
+  val f2 = Module(new Filter(bw, k,sp, 6,3)).io
+  val f3 = Module(new Filter(bw, k,sp, 6,4)).io
+  val f4 = Module(new Filter(bw, k,sp, 6,5)).io
+  val f5 = Module(new Filter(bw, k,sp,6, 7)).io
+
+
+
+
+  val rb1 = Module(new Reuse_buffer(bw,k,sp)).io
+  val rb2 = Module(new Reuse_buffer(bw,k,sp)).io
+  val rb3 = Module(new Reuse_buffer(bw,k,sp)).io
+  val rb4 = Module(new Reuse_buffer(bw,k,sp)).io
+
+
+
+
+  for (i <- 0 until k) {
+    f1.data_in(i) := io.datapath_data_in((i + 1) * bw - 1, i * bw)
+  }
+
+
+  rb1.data_in:=f1.data_to_rebuffer
+  f2.data_in:=rb1.data_out
+  rb2.data_in:=f2.data_to_rebuffer
+  f3.data_in:=rb2.data_out
+  rb3.data_in:=f3.data_to_rebuffer
+  f4.data_in:=rb3.data_out
+  rb4.data_in:=f4.data_to_rebuffer
+  f5.data_in:=rb4.data_out
+
+
+
+  val fifo1 = (Module(new FIFO(bw, 20)))
+  val fifo2 = (Module(new FIFO(bw, 15)))
+  val fifo3 = (Module(new FIFO(bw, 11)))
+  val fifo4 = (Module(new FIFO(bw, 7)))
+  val fifo5 = (Module(new FIFO(bw, 5)))
+
+
+  fifo1.io.enq.bits:=f1.data_to_Fifo
+  fifo2.io.enq.bits:=f2.data_to_Fifo
+  fifo3.io.enq.bits:=f3.data_to_Fifo
+  fifo4.io.enq.bits:=f4.data_to_Fifo
+  fifo5.io.enq.bits:=f5.data_to_Fifo
+
+  fifo1.io.enq.valid:=f1.valid_out
+  fifo2.io.enq.valid:=f2.valid_out
+  fifo3.io.enq.valid:=f3.valid_out
+  fifo4.io.enq.valid:=f4.valid_out
+  fifo5.io.enq.valid:=f5.valid_out
+
+  io.datapath_data_out1 := fifo1.io.deq.bits
+  io.datapath_data_out2 := fifo2.io.deq.bits
+  io.datapath_data_out3 := fifo3.io.deq.bits
+  io.datapath_data_out4 := fifo4.io.deq.bits
+  io.datapath_data_out5 := fifo5.io.deq.bits
+
+  // to calculate when data is ready to be dequeued
+  val f1_deq = RegInit((false.B))
+  val f2_deq = RegInit((false.B))
+  val f3_deq = RegInit((false.B))
+  val f4_deq = RegInit((false.B))
+  val f5_deq = RegInit((false.B))
+
+
+  when(cnt === 21.U){
+    f1_deq := true.B
+
+    f2_deq := true.B
+
+    f3_deq := true.B
+
+    f4_deq := true.B
+
+    f5_deq := true.B
+
+  }
+
+  fifo1.io.deq.ready := f1_deq
+  fifo2.io.deq.ready :=f2_deq
+  fifo3.io.deq.ready := f3_deq
+  fifo4.io.deq.ready := f4_deq
+  fifo5.io.deq.ready := f5_deq
+}
+
+
+class Filter(bw: Int, k:Int, sp: Int, rows: Int, position: Int) extends Module {
+
+  // cols of tile mod k = 0
+  val io = IO(new Bundle() {
+
+
+    val data_in = Input(Vec(k, UInt(bw.W)))
+    val valid_out = Output(Bool())
+    val data_to_Fifo = Output(UInt(bw.W))
+    val data_to_rebuffer = Output(Vec(k, UInt(bw.W)))
+   // val in_cnt = Input(UInt(bw.W))
+  })
+
+  val init_cnt = sp+1  /// central point of the first stencil
+  val cnt = RegInit(0.U(bw.W))
+  io.valid_out:=false.B
+
+  val offset = Reg(UInt(bw.W))
+  when (cnt === rows.U+ offset){
+    cnt := 0.U
+  }.otherwise{
+    cnt := cnt + 1.U
+  }
+
+  //val cnt = Wire(UInt(bw.W))
+  //cnt := io.in_cnt
+
+    //  0 1 2
+   //   3 4 5
+    //  6 7 8
+
+  io.data_to_Fifo := 0.U
+
+  if (position == 1) {
+     offset := 0.U
+     when(cnt < rows.U-1.U+offset){
+
+      io.data_to_Fifo := io.data_in(1)
+      io.valid_out := true.B
+    }
+  } else if (position == 3) {
+     offset := 3.U
+     when(cnt > 0.U+offset && cnt < rows.U+offset){
+      io.data_to_Fifo := io.data_in(2)
+      io.valid_out := true.B
+    }
+  } else if (position == 4) {
+    offset := 6.U
+    when(cnt > 0.U+offset && cnt < rows.U+offset){
+      io.data_to_Fifo := io.data_in(1)
+      io.valid_out := true.B
+    }
+  }
+    else if (position == 5) {
+      offset := 9.U
+      when(cnt > 0.U+offset && cnt < rows.U+offset){
+        io.data_to_Fifo := io.data_in(0)
+        io.valid_out := true.B
+      }
+  } else if (position == 7) {
+      offset := 12.U
+       when(cnt > 1.U+offset){
+        io.data_to_Fifo := io.data_in(1)
+        io.valid_out := true.B
+      }
+  }
+
+
+
+io.data_to_rebuffer := io.data_in
+
+}
+
+class FIFO(bw: Int, depth:Int) extends Module {
+  val io = IO(new Bundle {
+    val enq = Flipped(Decoupled(UInt(bw.W)))
+    val deq = Decoupled(UInt(bw.W))
+  })
+
+  val q = Module(new Queue(UInt(bw.W), depth))
+  q.io.enq <> io.enq
+  io.deq <> q.io.deq
+
+
+}
+
+
+
+class Reuse_buffer(bw: Int, k:Int, sp:Int) extends Module {
+  val io = IO(new Bundle() {
+    val data_in = Input(Vec(k, UInt(bw.W)))
+    val data_out = Output(Vec(k, UInt(bw.W)))
+  })
+
+
+  // A 2D buffer: k elements each with sp registers
+  val buffer = Reg(Vec(k, Vec(k, UInt(bw.W))))
+
+  for (i <- 0 until k) {
+    // Shift older data down
+    for (j <- k-1 to 1 by -1) {
+      buffer(i)(j) := buffer(i)(j-1)
+    }
+    // Insert new data at position 0
+    buffer(i)(0) := io.data_in(i)
+  }
+
+  // Output the last (oldest) element in each row
+  io.data_out := VecInit(buffer.map(_(k-1)))
+
+}
+
+
+class Dot_real(bw: Int, sw: Int, mult_pd: Int, add_pd: Int ) extends Module{
+  val io = IO(new Bundle(){
+
+    //  val clk = Input(Clock())
+    //  val rst = Input(Bool())
+
+    val in_data = Input(UInt((bw*sw).W))
+    val in_weight = Input(UInt((bw*sw).W))
+    val in_ready = Input(Bool())
+    val out_data = Output(UInt(bw.W))
+  })
+  val ADD_CC = 13
+  val MULT_CC = 10
+  val ADD_TREE_CC = log2Ceil(sw-1)*ADD_CC
+  val DOT_CC = MULT_CC + ADD_TREE_CC + ADD_CC
+
+
+  val matrix = (0 until sw).map(i=> io.in_data(sw*bw-(i*bw)-1,(sw * bw - (bw * (i + 1)))))
+  val weights = (0 until sw).map(i=> io.in_weight(sw*bw-(i*bw)-1,(sw * bw - (bw * (i + 1)))))
+  val terms = (0 until sw).map{ i =>
+
+    val mult = Module(new FP_mult(bw,mult_pd)).io
+    mult.in_valid:= true.B
+    mult.in_en:=true.B
+    mult.in_a:= matrix(i)
+    mult.in_b:= weights(i)
+    mult.out_s
+  }
+
+
+  def Redux_Tree(inputs: Seq[UInt], depth: Int = 0): UInt = {
+
+
+    if (inputs.length == 1) {inputs.head}
+    else {
+      val pairs = inputs.grouped(2).toList
+      val next = pairs.map {
+        case Seq(a, b) =>
+          val add = Module(new FP_add(bw,add_pd)).io
+          add.in_en := true.B
+          add.in_valid := true.B
+          add.in_a := a
+          add.in_b := b
+          add.out_s
+
+        case Seq(single) =>
+          ShiftRegister(single, ADD_CC)
+      }
+      Redux_Tree(next)
+    }
+
+  }
+  io.out_data := Redux_Tree(terms)
+}
+
+class dot(bw: Int, sw: Int, mult_pd: Int, add_pd: Int ) extends Module{
+  val io = IO(new Bundle(){
+
+    //  val clk = Input(Clock())
+    //  val rst = Input(Bool())
+
+    val in_matrix = Input(Vec(sw,UInt((bw.W))))
+    val in_weight = Input(Vec(sw,UInt((bw.W))))
+    //val in_ready = Input(Bool())
+    val out_data = Output(UInt(bw.W))
+  })
+  val ADD_CC = 13
+  val MULT_CC = 10
+  val ADD_TREE_CC = log2Ceil(sw-1)*ADD_CC
+  val DOT_CC = MULT_CC + ADD_TREE_CC + ADD_CC
+
+
+
+  val matrix = (0 until sw).map(i=> Cat(io.in_matrix).asUInt(sw*bw-(i*bw)-1,(sw * bw - (bw * (i + 1)))))
+  val weights = (0 until sw).map(i=> Cat(io.in_weight).asUInt(sw*bw-(i*bw)-1,(sw * bw - (bw * (i + 1)))))
+  val terms = (0 until sw).map{ i =>
+
+    val mult = Module(new FP_mult(bw,mult_pd)).io
+    mult.in_valid:= true.B
+    mult.in_en:=true.B
+    mult.in_a:= matrix(i)
+    mult.in_b:= weights(i)
+    mult.out_s
+  }
+
+
+  def Redux_Tree(inputs:Seq[UInt],depth:Int = 0): UInt = {
+
+    if (inputs.length == 1) {inputs.head}
+    else {
+      val pairs = inputs.grouped(2).toList
+      val next = pairs.map {
+        case Seq(a, b) =>
+          val add = Module(new FP_add(bw,add_pd)).io
+          add.in_en := true.B
+          add.in_valid := true.B
+          add.in_a := a
+          add.in_b := b
+          add.out_s
+
+        case Seq(single) =>
+          ShiftRegister(single, ADD_CC)
+      }
+      Redux_Tree(next)
+    }
+  }
+  io.out_data := Redux_Tree(terms)
+}
