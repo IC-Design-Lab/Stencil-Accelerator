@@ -87,28 +87,15 @@ class SODA_3d(bw: Int, k: Int, x:Int, y:Int, r: Int, mult_pd: Int, add_pd: Int, 
   //val LATENCY = ((r-1)*(x*y/k))+DOT_CC
   val W_SIZE = points
 
-  val last_depth = RegInit(0.U(bw.W))
+  val total_depth = RegInit(0.U(bw.W))
   val x_count = RegInit(0.U(bw.W))
   val y_count = RegInit(0.U(bw.W))
   val z_count = RegInit(0.U(bw.W))
-  val current_state  = RegInit(0.U(bw.W))
-  val grid_counter = RegInit(0.U(bw.W))
-  val t = RegInit(1.U(bw.W))
-
-  val write_ptr = RegInit(0.U(bw.W)) // create a pointer for filling the output buffer
-  val read_ptr = RegInit(0.U(bw.W))
-  val prev_timestep = RegInit(0.U(bw.W))
+  
   val weights = Reg(Vec(W_SIZE, UInt(bw.W)))
   //val counter = 0.U
   val length = x // this is the length of the spatial block, it is assumed x = y = z for each block
-
-  object states extends ChiselEnum {
-    val filling, steady, drain = Value
-  }
-  object mode extends ChiselEnum {
-    val spatial, temporal = Value
-  }
-  val current_mode  = RegInit(mode.spatial)
+  
 
   for(i <- 0 until (W_SIZE)){
     weights(i) := io.in_weight(W_SIZE*bw-(i*bw)-1, (W_SIZE*bw-(bw*(i+1))))
@@ -184,9 +171,7 @@ println(chains)
     val last_input = fifo_offsets.length
 
 
-    sc.io.in_matrix(last_input) := Mux((current_mode===mode.temporal),prev_timestep,io.in_matrix(k*bw-(sc_id*bw)-1,(k*bw-(bw*(sc_id+1)))))
-
-    //sc.io.in_matrix(last_input) := Mux((false.B),prev_timestep,io.in_matrix(k*bw-(sc_id*bw)-1,(k*bw-(bw*(sc_id+1)))))
+    sc.io.in_matrix(last_input) := io.in_matrix(k*bw-(sc_id*bw)-1,(k*bw-(bw*(sc_id+1))))
 
     sc.io.in_weight(last_input) := weights(last_input)
   }
@@ -199,10 +184,7 @@ println(chains)
   for (i <- fifos.indices) { // i index of chain
     for (j <- fifos(i).indices) { // j index of fifo inside chain
       if (j == 0) {
-
-        //fifos(i)(j).io.in := Mux(false.B,prev_timestep,io.in_matrix(k*bw-(i*bw)-1, (k*bw - (bw*(i+1)))))
-
-        fifos(i)(j).io.in := Mux((current_mode===mode.temporal),prev_timestep,io.in_matrix(k*bw-(i*bw)-1, (k*bw - (bw*(i+1)))))
+        fifos(i)(j).io.in := io.in_matrix(k*bw-(i*bw)-1, (k*bw - (bw*(i+1))))
       }
       else {
         fifos(i)(j).io.in := fifos(i)(j - 1).io.out
@@ -219,124 +201,45 @@ println(chains)
   io.out_data := sc_outputs.asUInt
 
   // total FIFO pipeline depth
-//#############################################################
-//###########################################################
 
-  val low_grid = length*r + r  // inital grid counter value, ie. index of the first input point
-  val up_grid =  (length)*(length)*(length) - (length*r + r ) // final value of grid point based on input data
-  val G = (length)*(length)
-  val H = length*r + r
 
-  val GRID_PRIMING_LATENCY = (length*length)-(length*r + r) + (length*r + r) // number of points until first vali output appears, starting from the first input index not 0
-  val FLUSHING_LATENCY = (length*r + r) + (length*length)-(length*r + r) + (length*length)-(length*r + r) + (length*length) + 2* (length*r + r) // flushing bogus points from the tail of the first iteration and the header of the second iteration
+  val total_depth_s = fifo_depths_reversed.flatten.sum
+  total_depth := total_depth_s.U
+  val LATENCY = total_depth+DOT_CC
 
-  val flushing_latency: Seq[Int] =
-    Seq.tabulate(time_steps){ ts =>
-      if (ts == 0) 0
-      else (2*ts + 1)*G + (2*ts - 1)*H
-    }
-println(flushing_latency)
-
-  val PIPLINE_SIZE = (length)*(length)*(length) - (2*(length+r)) // generate output  buffer
-  val priming_done = RegInit(false.B)
-  val LATENCY = DOT_CC.U + last_depth-1.U  //+ ((length.U*length.U*r.U)+(length.U*r.U)+r.U)
-  when (counter === LATENCY){priming_done := true.B}
-  when(priming_done ){grid_counter := grid_counter + 1.U}
-  when(grid_counter === up_grid.U){grid_counter := low_grid.U}
-
-  val ix = (grid_counter) % length.U
-  val iy = ((grid_counter) / length.U) % length.U
-  val iz = (grid_counter) / (length.U * length.U)
-
-  val lower = (r.asUInt*t)
-  val upper = (length.asUInt - 1.U) - (r.asUInt*t)
-
-  val valid_out = ix >= lower && ix <= upper && iy >= lower && iy <= upper && iz >= lower && iz <= upper
-  io.out_valid := valid_out
-
-  val output_buffer = Reg(Vec(PIPLINE_SIZE, UInt(bw.W)))
-  val store_flag = RegInit(false.B)
-  when(grid_counter > low_grid.U && grid_counter <= up_grid.U){
-    store_flag := true.B}.otherwise{store_flag := false.B}
-  prev_timestep := output_buffer(read_ptr)
-
-  when(store_flag === true.B){ // record bogus output + valid output to maintain index
-    output_buffer(write_ptr):= sc_outputs.asUInt
-    write_ptr:= write_ptr+1.U
+  when(counter === LATENCY){
+    
   }
 
-  when(counter === PIPLINE_SIZE.U){ current_mode := mode.temporal}// hitting the last valid out, switch to t mode
-  when(current_mode === mode.temporal){
-    read_ptr:= read_ptr + 1.U
-  }
-  when(read_ptr === PIPLINE_SIZE.U){
-    read_ptr := 0.U
-  }
-  when(write_ptr === PIPLINE_SIZE.U){
-    write_ptr := 0.U
-  }
-  when( (grid_counter === up_grid.U)){
-    t:= t+1.U
-  }
+//  // conditions for invalid output
+//  val valid_results = ArrayBuffer[Int]()
+//  //for (t <- 1 until time_steps+1 ) {
+//    for(iz <- 0  until length){
+//      for (iy <- 0 until length){
+//        for(ix <- 0 until length) { // since z is streaming, the limit is the minimum z planes needed to satisfy dependinces, so either x or y
+//
+//          if((ix >= (r)) && (ix <= length-(r)) && (iy >= (r)) && (iy <= length-(r)) && (iz >= (r)) && (iz <= length-(r))){
+//            valid_results += (ix+(iy*(length))+(iz*(length*length)))
+//          }
+//        }}}
+////}
 
 
-
-  val last_depth_s = fifo_depths_reversed.flatten.last
-  last_depth := last_depth_s.U
-  val PIPELINE_LENGTH = (length.U)*(length.U)*(length.U) - 1.U
-  //val wait_cc = last_depth_s
-  //val wait_cnt    = RegInit(0.U(log2Ceil(wait_cc+1).W))
-  //val waiting     = RegInit(false.B)
-
-  //val last_valid_flag = priming_done && valid_out &&
-
-
-  //when (counter === LATENCY){priming_done := true.B}
-  //when(priming_done && !waiting){grid_counter := grid_counter + 1.U}
-
-  //when(priming_done ){grid_counter := grid_counter + 1.U}
-  //when(priming_done){grid_counter := grid_counter + 1.U}
-
-
-
-//  when(waiting){
-//    wait_cnt := wait_cnt + 1.U
+//
+//println(valid_results)
+//// convert valid results to Seq
+//val valid_data: Seq[Int] = valid_results.toSeq
+//  // store as a chisel vec
+//  val valid_vector = VecInit(valid_data.map(_.U(bw.W)))
+//  val valid_condition = valid_vector.contains(counter)
+//  io.out_valid := false.B
+//  when(counter === valid_condition) {
+//    io.out_valid := true.B
 //  }
-
-//  when (waiting && wait_cnt === (wait_cc.U-1.U)) {
-//    waiting  := false.B
-//    wait_cnt := 0.U
-//  }
-//    val offset = 0.U
-//  // val offset = (r+(r*length)+(r*length*length)).U //r+length*r+length*length*r
-//  val Lt = length.U //- (2.U * (t - 1.U))
-//  val ix = (grid_counter) % Lt
-//  val iy = ((grid_counter) / Lt) % Lt
-//  val iz = (grid_counter) / (Lt * Lt)
+  // after time skewing
 
 
 
-  //val shrinking_length = length.U - (2.U * (t - 1.U))
-  //val LAST_VALID_INDEX = shrinking_length *(1.U + length.U + (length.U * length.U))
-  //############################################
-
-
-
-
-
-
-
-
-
-  //  when(valid_out === true.B){
-  //    output_buffer(write_ptr):= sc_outputs.asUInt
-  //    write_ptr:= write_ptr+1.U
-  //  }
-  //  val last_out = ((length.U*length.U*r.U)+(length.U*r.U)+r.U)
-  //  when(grid_counter === MAX_OUT_SIZE-last_out ){ current_mode := mode.temporal}// hitting the last valid out, switch to t mode
-  //  when(current_mode === mode.temporal){
-  //    read_ptr:= read_ptr + 1.U
-  //  }
 
 }
 
@@ -1286,6 +1189,7 @@ class dot(bw: Int, sw: Int, mult_pd: Int, add_pd: Int ) extends Module{
 
 
   def Redux_Tree(inputs:Seq[UInt],depth:Int = 0): UInt = {
+
     if (inputs.length == 1) {inputs.head}
     else {
       val pairs = inputs.grouped(2).toList
