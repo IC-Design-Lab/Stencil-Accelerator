@@ -346,14 +346,10 @@ class SODA_2d(bw: Int, k: Int, m:Int, r:Int, mult_pd: Int, add_pd: Int, points: 
     }
   }
 
-
-
   for (i <- scs.indices) {
     sc_outputs(math.abs(i-(k-1))) := scs(i).io.out_data
   }
-
   io.out_data := sc_outputs.asUInt
-
 }
 
 class dot(bw: Int, sw: Int, mult_pd: Int, add_pd: Int ) extends Module{
