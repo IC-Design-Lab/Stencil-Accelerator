@@ -99,7 +99,7 @@ initial begin
       report_ieee754=$fopen("./sc_r1_k2_3d/n32_m32_p31/report_ieee754.log", "w");
   `endif
 
-   repeat(4143) @(negedge clock);
+   repeat(32799) @(negedge clock);
   for(output_index=0; output_index<`OUTPUT_NO;) begin
 	 @(negedge clock);
        if(out_valid_d[0] == 1) begin 
