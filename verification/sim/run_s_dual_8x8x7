@@ -1,0 +1,222 @@
+#!/bin/csh -f
+################################################################################
+# simulation top mcript
+# change modelsim in this file dir and run "do this_file.do"
+# project dir ---+---> hdl source dir
+#                +---> sim mcript dir
+#
+################################################################################
+
+# check if current dir has modelsim config file
+set has_config  [file exists modelsim.do]
+# config modelsim 
+if {$has_config==1} { do modelsim.do  ; }
+
+echo "+====================================="
+echo "| Creat Lib Work soc                  "
+echo "+====================================="
+vlib work
+vmap work work 
+
+echo "+====================================="
+echo "| Complile RTL Code of soc            "
+echo "+====================================="
+     
+vlog +define+SC_R1_K2_3D\
+     -f ../filelist/filelist_s_dual_8x8x7.f  
+
+echo "+====================================="
+echo "| Compiler Pass                       "
+echo "| Being to Run Simulation             "
+echo "+====================================="
+vsim -voptargs=+acc=npr work.tb_sc -t 1ns
+
+###################################### mus  ####################################
+#add wave -noupdate -format logic -hexadecimal tb_sc/clock          
+#add wave -noupdate -format logic -hexadecimal tb_sc/reset    
+#add wave -noupdate -format logic -hexadecimal tb_sc/in_ready      
+#add wave -noupdate -format logic -hexadecimal tb_sc/in_matrix         
+#add wave -noupdate -format logic -hexadecimal tb_sc/in_weight      
+#add wave -noupdate -format logic -hexadecimal tb_sc/out_data        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/io_out_valid   
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/io_in_matrix_d
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/io_in_weight_d
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/io_in_ready_d
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/io_out_valid_d
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/io_out_data_d
+add wave -noupdate -format logic -decimal tb_sc/u_dual/counter_c
+
+add wave -noupdate -format logic -decimal tb_sc/u_dual/core_1/scs_0/io_out_data
+add wave -noupdate -format logic -decimal tb_sc/u_dual/core_1/scs_1/io_out_data
+add wave -noupdate -format logic -decimal tb_sc/u_dual/core_2/scs_0/io_out_data
+add wave -noupdate -format logic -decimal tb_sc/u_dual/core_2/scs_1/io_out_data
+
+add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/*
+
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/core_1/io_in_ready
+#add wave -noupdate -format logic -binary tb_sc/u_dual/core_1/io_out_valid
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/core_1/_scs_0_io_out_data
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/core_1/_scs_1_io_out_data
+#add wave -noupdate -format logic -decimal tb_sc/u_dual/core_1/counter
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/core_1/priming_done
+#add wave -noupdate -format logic -decimal tb_sc/u_dual/core_1/grid_counters_0
+#add wave -noupdate -format logic -decimal tb_sc/u_dual/core_1/grid_counters_1
+
+
+
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/core_2/io_in_ready
+#add wave -noupdate -format logic -binary tb_sc/u_dual/core_2/io_out_valid
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/core_2/_scs_0_io_out_data
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/core_2/_scs_1_io_out_data
+#add wave -noupdate -format logic -decimal tb_sc/u_dual/core_2/counter
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/core_2/priming_done
+#add wave -noupdate -format logic -decimal tb_sc/u_dual/core_2/grid_counters_0
+#add wave -noupdate -format logic -decimal tb_sc/u_dual/core_2/grid_counters_1
+
+#add wave -noupdate -format logic -decimal tb_sc/u_dual/core_1/io_out_valid
+
+#add wave -noupdate -format logic -decimal tb_sc/u_dual/core_2/io_out_valid
+
+
+add wave -noupdate -format logic -decimal tb_sc/u_dual/core_1/scs_0/*
+add wave -noupdate -format logic -decimal tb_sc/u_dual/core_1/scs_1/*
+
+add wave -noupdate -format logic -decimal tb_sc/u_dual/core_2/scs_0/*
+add wave -noupdate -format logic -decimal tb_sc/u_dual/core_2/scs_1/*
+#add wave -noupdate -format logic -decimal tb_sc/u_dual/core_2/scs_1/io_in_matrix_2
+
+#add wave -noupdate -format logic -decimal tb_sc/u_dual/core_2/scs_1/io_in_matrix_3
+#add wave -noupdate -format logic -decimal tb_sc/u_dual/core_2/scs_1/io_in_matrix_4
+#add wave -noupdate -format logic -decimal tb_sc/u_dual/core_2/scs_1/io_in_matrix_5
+
+#add wave -noupdate -format logic -decimal tb_sc/u_dual/core_2/scs_1/io_in_matrix_6
+
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_dual/core_2/* 
+
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/counter        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/ix        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/iy        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/iz        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/store_flag
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/prev_timestep      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/current_mode       
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/read_ptr      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/write_ptr       
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/t      
+
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/priming_done    
+
+#add wave -noupdate -format logic -hexadecimal tb_sc/golden_result       
+#add wave -noupdate -format logic -hexadecimal tb_sc/dut_result      
+
+
+
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k1_3d/chain0_fifo5/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k1_3d/chain0_fifo1/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k1_3d/chain0_fifo0/io_in       
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k1_3d/chain0_fifo1_1/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k1_3d/chain0_fifo5_1/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k1_3d/chain0_fifo25/io_in
+
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k1_3d/chain0_fifo5/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k1_3d/chain0_fifo1/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k1_3d/chain0_fifo0/io_out       
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k1_3d/chain0_fifo1_1/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k1_3d/chain0_fifo5_1/io_out       
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k1_3d/chain0_fifo25/io_out
+
+
+        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo1/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo8/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo80/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo11/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo2/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo1/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo7/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo79/io_in   
+
+
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo9/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo3/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo0/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo9_1/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo81/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo10/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo1/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo8/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo80/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo11/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo2/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo1/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo7/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo79/io_out        
+
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_0/io_out_data 
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_1/io_out_data 
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_2/io_out_data 
+      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_0/io_in_matrix_0        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_0/io_in_matrix_1       
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_0/io_in_matrix_2      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_0/io_in_matrix_3      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_0/io_in_matrix_4      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_0/io_in_matrix_5      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_0/io_in_matrix_6      
+
+      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_1/io_in_matrix_0        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_1/io_in_matrix_1       
+##add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_1/io_in_matrix_2      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_1/io_in_matrix_3      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_1/io_in_matrix_4      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_1/io_in_matrix_5      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_1/io_in_matrix_6   
+
+
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_2/io_out_data       
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_2/io_in_matrix_0        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_2/io_in_matrix_1       
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_2/io_in_matrix_2      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_2/io_in_matrix_3      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_2/io_in_matrix_4      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_2/io_in_matrix_5      
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/scs_2/io_in_matrix_6 
+
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo9/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo3/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo0/io_in       
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo9_1/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo81/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo10/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo1/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo8/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo80/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo11/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo2/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo1/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo7/io_in        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo79/io_in   
+
+
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo9/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo3/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo0/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo9_1/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain0_fifo81/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo10/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo1/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo8/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain1_fifo80/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo11/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo2/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo1/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo7/io_out        
+#add wave -noupdate -format logic -hexadecimal tb_sc/u_sc_r1_k2_3d/chain2_fifo79/io_out        
+
+
+
+
+     
+run 100 us                                                                            
+

@@ -31,14 +31,14 @@ object s_dual {
   def main(args: Array[String]): Unit = {
     val bw = 32
     val k = 2
-    val x = 32
-    val y = 32
-    val z = 31
+    val x = 8
+    val y = 8
+    val z = 7
     val r = 1
     val mult_pd = 10
     val add_pd = 13
     val points = 7
-    val time_steps = 5
+    val time_steps = 3
     val dir = new File("verification/dut")
     dir.mkdirs()
     val sw2 = new PrintWriter(new File(dir, Seq(
@@ -132,9 +132,11 @@ class SODA_dual_core(bw: Int, k: Int, x:Int, y:Int,z:Int, r: Int, mult_pd: Int, 
   val iy = Wire(Vec(k, UInt(log2Ceil(y).W)))
   val iz = Wire(Vec(k, UInt(log2Ceil(z).W)))
 
-  val grid_offset = ((time_steps + 1)/2)-3//  needs to be parameterized per k
-  val first_valid_unsigned = first_valid.U + grid_offset.U
-  println(first_valid_unsigned)
+  val grid_offset = (((time_steps + 1)/2) - 3).S  // needs to be parameterized per k
+  val first_valid_signed = first_valid.asSInt     // Convert first_valid (UInt) to SInt
+  val first_valid_offset = first_valid_signed + grid_offset
+
+  // println(first_valid_unsigned)
   val offset = (r * time_steps).U
   val start_index = offset + offset * x.U + offset * x.U * y.U -1.U
   val last_index = (x*y*z - (r+x) - 1).U
@@ -147,11 +149,11 @@ class SODA_dual_core(bw: Int, k: Int, x:Int, y:Int,z:Int, r: Int, mult_pd: Int, 
   }
 
   println(grid_offset)
-  when((counter_c === first_valid_unsigned-1.U) && !matrix_fi) { // grid count initilization
+  when((counter_c === first_valid_offset.asUInt-1.U) && !matrix_fi) { // grid count initilization
     for(i <- 0 until k) {
       grid_counters(i) := start_index + i.U + ((i+lane_offset) % k).U
     }
-  }.elsewhen((counter_c > first_valid_unsigned -1.U) && !matrix_fi) { // grid count until last point
+  }.elsewhen((counter_c > first_valid_offset.asUInt -1.U) && !matrix_fi) { // grid count until last point
     for(i <- 0 until k) {
       grid_counters(i) := grid_counters(i) + k.U
     }
