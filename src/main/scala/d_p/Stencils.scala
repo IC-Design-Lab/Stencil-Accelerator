@@ -29,10 +29,25 @@ object dp3 {
 
 object s_dual {
   def main(args: Array[String]): Unit = {
+    val bw = 32
+    val k = 2
+    val x = 32
+    val y = 32
+    val z = 31
+    val r = 1
+    val mult_pd = 10
+    val add_pd = 13
+    val points = 7
+    val time_steps = 5
     val dir = new File("verification/dut")
     dir.mkdirs()
-    val sw2 = new PrintWriter(new File(dir, "soda_dual.sv"))
-    sw2.println(circt.stage.ChiselStage.emitSystemVerilog(new SODA_dual_core(32, 2,12,12 ,11,1,10,13,7,4)))
+    val sw2 = new PrintWriter(new File(dir, Seq(
+      "soda_dual",
+      s"k$k",
+      s"x${x}_y${y}_z${z}",
+      s"t${time_steps}",".sv"
+    ).mkString("_")))
+    sw2.println(circt.stage.ChiselStage.emitSystemVerilog(new SODA_dual_core(bw, k,x,y ,z,r,mult_pd,add_pd,points,time_steps)))
     sw2.close()
   }
 }
@@ -45,7 +60,11 @@ class SODA_dual_core(bw: Int, k: Int, x:Int, y:Int,z:Int, r: Int, mult_pd: Int, 
     val in_ready_d = Input(Bool())
     val out_data_d = Output(UInt((bw * k).W))
     val out_valid_d = Output(UInt(k.W))
+
   })
+
+  //override def desiredName: String =
+  s"soda_dual_core_k${k}_x${x}_y${y}_z${z}_ts${time_steps}"
 
   val core_1 = Module(new SODA_3d(bw,k,x,y,z, r, mult_pd, add_pd, points, time_steps))
   val core_2 = Module(new SODA_3d(bw,k,x,y,z, r, mult_pd, add_pd, points, time_steps))
@@ -61,7 +80,7 @@ class SODA_dual_core(bw: Int, k: Int, x:Int, y:Int,z:Int, r: Int, mult_pd: Int, 
   val pipeline_flush = (((x*y)-(r+x))+(x*y)+(2*(x+r)))/k
   val core1_valid_latency = (x*y) + DOT_CC
   val stage_latency = DOT_CC + pipeline_flush
-  val delay_latency = input_size - (core1_valid_latency + stage_latency) + 1
+  val delay_latency = math.max(1,input_size - (core1_valid_latency + stage_latency) + 1)
   val core1_steps = (time_steps+1)/2
   val core2_steps = time_steps/2
   val core1_valid = Array.fill(core1_steps)(0)
@@ -99,29 +118,49 @@ class SODA_dual_core(bw: Int, k: Int, x:Int, y:Int,z:Int, r: Int, mult_pd: Int, 
     else {
       core2_valid(core2_steps - 1)
     }
-  val first_valid_unsigned = first_valid.U
+
+  val core1_out_select =
+    if(time_steps % 2 == 1){
+      true.B
+    }else{
+      false.B
+    }
+
+  val grid_counters = RegInit(VecInit((0 until k).map(_ => 0.U(bw.W))))
+  val grid_counters_r = RegNext(RegNext(grid_counters))
+  val ix = Wire(Vec(k, UInt(log2Ceil(x).W)))
+  val iy = Wire(Vec(k, UInt(log2Ceil(y).W)))
+  val iz = Wire(Vec(k, UInt(log2Ceil(z).W)))
+
+  val grid_offset = ((time_steps + 1)/2)-3//  needs to be parameterized per k
+  val first_valid_unsigned = first_valid.U + grid_offset.U
+  println(first_valid_unsigned)
   val offset = (r * time_steps).U
   val start_index = offset + offset * x.U + offset * x.U * y.U -1.U
   val last_index = (x*y*z - (r+x) - 1).U
-  val grid_counters = RegInit(VecInit((0 until k).map(_ => 0.U(bw.W))))
-  val lane_offset = (k - (time_steps % k)) % k
-  when(counter_c === first_valid_unsigned-1.U ) { // grid count initilization
+  val lane_offset = (k - (time_steps % k)) % k // determine which lane is the first valid at
+  val done_matrix = grid_counters(k-1) >= last_index
+  val done_matrix_d = RegNext(done_matrix, false.B)
+  val matrix_fi = RegInit(false.B)
+  when(done_matrix_d) {
+    matrix_fi := true.B
+  }
+
+  println(grid_offset)
+  when((counter_c === first_valid_unsigned-1.U) && !matrix_fi) { // grid count initilization
     for(i <- 0 until k) {
       grid_counters(i) := start_index + i.U + ((i+lane_offset) % k).U
     }
-  }.elsewhen(counter_c > first_valid_unsigned -1.U) { // grid count until last point
+  }.elsewhen((counter_c > first_valid_unsigned -1.U) && !matrix_fi) { // grid count until last point
     for(i <- 0 until k) {
       grid_counters(i) := grid_counters(i) + k.U
     }
   }
 
-  val ix = Wire(Vec(k, UInt(log2Ceil(x).W)))
-  val iy = Wire(Vec(k, UInt(log2Ceil(y).W)))
-  val iz = Wire(Vec(k, UInt(log2Ceil(z).W)))
   for(i <- 0 until k) {
-    ix(i) := grid_counters(i) % x.U
-    iy(i) := (grid_counters(i)/x.U) % y.U
-    iz(i) := grid_counters(i)/(x.U * y.U)
+    ix(i) := grid_counters_r(i) % x.U
+    iy(i) := (grid_counters_r(i)/x.U) % y.U
+    iz(i) := grid_counters_r(i)/(x.U * y.U)
   }
 
   val lower_x = (r.asUInt*time_steps.asUInt)
@@ -139,15 +178,8 @@ class SODA_dual_core(bw: Int, k: Int, x:Int, y:Int,z:Int, r: Int, mult_pd: Int, 
         iz(i) >= lower_z && iz(i) <= upper_z
   }
 
-  val done_matrix = grid_counters(k-1) >= last_index
-  val done_matrix_d = RegNext(done_matrix, false.B)
-  when(done_matrix_d) {
-    grid_counters := VecInit(Seq.fill(k)(0.U(bw.W)))
-    counter_c := 0.U
-  }
-
   when(io.in_ready_d){count_flag := true.B}
-  when(count_flag){counter_c := counter_c + 1.U}
+  when(count_flag && !matrix_fi){counter_c := counter_c + 1.U}
   when(counter_c <= input_size.U-2.U){
     dram_load := true.B
   }.otherwise{
@@ -156,20 +188,25 @@ class SODA_dual_core(bw: Int, k: Int, x:Int, y:Int,z:Int, r: Int, mult_pd: Int, 
 
   val input_counter = RegInit(0.U(bw.W))
   val dram_active   = RegInit(true.B)
-  when(io.in_ready_d && dram_active){input_counter := input_counter + 1.U}
+  when(io.in_ready_d && dram_active && !matrix_fi){input_counter := input_counter + 1.U}
   when(input_counter === input_size.U){dram_active := false.B}
+  when(matrix_fi){
+    dram_active := false.B
+    dram_load := false.B
+  }
   val feedback_valid = core_2.io.out_valid
-  val core1_input = Mux(dram_active, io.in_matrix_d, core_2.io.out_data)
+  val core1_input = Mux(dram_active, io.in_matrix_d, RegNext(core_2.io.out_data))
   val core1_valid_flag = Mux(dram_active, io.in_ready_d, feedback_valid)
 
   core_1.io.in_matrix := core1_input
-  core_1.io.in_ready  := core1_valid_flag
+  core_1.io.in_ready  := RegNext(core1_valid_flag)
   core_1.io.in_weight := io.in_weight_d
   core_2.io.in_matrix := ShiftRegister(core_1.io.out_data,delay_latency)
-  core_2.io.in_ready  := core_1.io.out_valid
+  core_2.io.in_ready  := RegNext(core_1.io.out_valid)
   core_2.io.in_weight := io.in_weight_d
-  io.out_data_d:= core_1.io.out_data
-  io.out_valid_d := valid_vec.asUInt
+  io.out_data_d:= Mux(core1_out_select, core_1.io.out_data, core_2.io.out_data)
+  io.out_valid_d := (valid_vec.asUInt)
+  dontTouch(valid_vec)
 }
 
 class FIFO_r(val bw: Int, val depth: Int) extends Module {
@@ -269,6 +306,8 @@ class SODA_3d(bw: Int, k: Int, x:Int, y:Int,z:Int, r: Int, mult_pd: Int, add_pd:
 
   for (i <- scs.indices) {sc_outputs(math.abs(i-(k-1))) := scs(i).io.out_data}
   io.out_data := sc_outputs.asUInt
+
+
 }
 
 class SODA_2d(bw: Int, k: Int, m:Int, r:Int, mult_pd: Int, add_pd: Int, points: Int, shape: String) extends Module {
