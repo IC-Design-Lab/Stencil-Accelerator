@@ -31,14 +31,14 @@ object s_dual {
   def main(args: Array[String]): Unit = {
     val bw = 32
     val k = 2
-    val x = 8
-    val y = 8
-    val z = 7
+    val x = 32
+    val y = 32
+    val z = 31
     val r = 1
     val mult_pd = 10
     val add_pd = 13
     val points = 7
-    val time_steps = 3
+    val time_steps = 5
     val dir = new File("verification/dut")
     dir.mkdirs()
     val sw2 = new PrintWriter(new File(dir, Seq(
