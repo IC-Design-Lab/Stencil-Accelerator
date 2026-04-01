@@ -118,8 +118,9 @@ initial begin
       `include "functions/error_percent_abs_cal.sv"
       `include "functions/comp_abs.sv"
       `include "functions/comp_ieee754.sv"
+	output_index=output_index+1;
+      
          end
-output_index=output_index+1;
 
   end
 
